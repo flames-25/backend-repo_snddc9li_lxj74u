@@ -178,3 +178,12 @@ async def update_invoice(invoice_no: str, payload: InvoiceUpdate):
 
     doc = db["invoice"].find_one({"_id": invoice_no})
     return serialize_doc(doc)
+
+@app.delete("/api/invoices/{invoice_no}")
+async def delete_invoice(invoice_no: str):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    result = db["invoice"].delete_one({"_id": invoice_no})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"deleted": True, "invoice_no": invoice_no}
