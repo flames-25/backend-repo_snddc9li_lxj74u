@@ -45,11 +45,12 @@ class Invoice(BaseModel):
     Invoice collection schema
     Collection name: "invoice"
     """
-    invoice_no: str = Field(..., description="Nomor Invoice")
+    invoice_no: str = Field(..., description="Nomor Invoice (primary key)")
     customer: str = Field(..., description="Nama Customer")
     item_name: str = Field(..., description="Nama Barang")
     surat_jalan_no: str = Field(..., description="Nomor Surat Jalan")
     quantity: int = Field(..., ge=0, description="Quantity")
     price: float = Field(..., ge=0, description="Harga per unit")
-    tax: float = Field(..., ge=0, description="Pajak (11%) yang dihitung otomatis")
+    tax_rate: float = Field(11, ge=0, description="PPN dalam persen, contoh 11 untuk 11%")
+    tax: float = Field(..., ge=0, description="Nilai PPN (rupiah) yang dihitung otomatis")
     total: float = Field(..., ge=0, description="Total harga (qty * price + tax)")
