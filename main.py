@@ -1,6 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+from bson import ObjectId
+
+from database import db
+from database import create_document, get_documents
+from schemas import Invoice
 
 app = FastAPI()
 
@@ -64,8 +71,91 @@ def test_database():
     
     return response
 
+# Utility to convert Mongo ObjectId to str recursively
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+def serialize_doc(doc: dict):
+    if not doc:
+        return doc
+    if doc.get("_id"):
+        doc["id"] = str(doc.pop("_id"))
+    return doc
+
+# Request model for creating/updating invoice (without timestamps)
+class InvoiceCreate(BaseModel):
+    customer_invoice_no: str
+    surat_jalan_no: str
+    quantity: int
+    price: float
+
+class InvoiceUpdate(BaseModel):
+    customer_invoice_no: Optional[str] = None
+    surat_jalan_no: Optional[str] = None
+    quantity: Optional[int] = None
+    price: Optional[float] = None
+
+TAX_RATE = 0.11
+
+def compute_tax_and_total(quantity: int, price: float):
+    subtotal = quantity * price
+    tax = round(subtotal * TAX_RATE, 2)
+    total = round(subtotal + tax, 2)
+    return tax, total
+
+@app.post("/api/invoices")
+async def create_invoice(payload: InvoiceCreate):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    tax, total = compute_tax_and_total(payload.quantity, payload.price)
+    invoice = Invoice(
+        customer_invoice_no=payload.customer_invoice_no,
+        surat_jalan_no=payload.surat_jalan_no,
+        quantity=payload.quantity,
+        price=payload.price,
+        tax=tax,
+        total=total,
+    )
+    inserted_id = create_document("invoice", invoice)
+    doc = db["invoice"].find_one({"_id": ObjectId(inserted_id)})
+    return serialize_doc(doc)
+
+@app.get("/api/invoices")
+async def list_invoices():
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    docs = get_documents("invoice")
+    return [serialize_doc(d) for d in docs]
+
+@app.get("/api/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    doc = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return serialize_doc(doc)
+
+@app.put("/api/invoices/{invoice_id}")
+async def update_invoice(invoice_id: str, payload: InvoiceUpdate):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not configured")
+    existing = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    update_data = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
+    # If quantity or price updated, recompute tax and total based on newest values
+    q = update_data.get("quantity", existing.get("quantity"))
+    p = update_data.get("price", existing.get("price"))
+    tax, total = compute_tax_and_total(q, p)
+    update_data["tax"] = tax
+    update_data["total"] = total
+
+    update_data["updated_at"] = __import__('datetime').datetime.utcnow()
+
+    result = db["invoice"].update_one({"_id": ObjectId(invoice_id)}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    doc = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
+    return serialize_doc(doc)
+

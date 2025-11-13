@@ -14,7 +14,7 @@ Model name is converted to lowercase for the collection name:
 from pydantic import BaseModel, Field
 from typing import Optional
 
-# Example schemas (replace with your own):
+# Example schemas (you can keep or remove if not needed by your app)
 
 class User(BaseModel):
     """
@@ -34,15 +34,20 @@ class Product(BaseModel):
     """
     title: str = Field(..., description="Product title")
     description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
+    price: float = Field(..., ge=0, description="Price in currency units")
     category: str = Field(..., description="Product category")
     in_stock: bool = Field(True, description="Whether product is in stock")
 
-# Add your own schemas here:
-# --------------------------------------------------
+# Application-specific schema: Invoice
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class Invoice(BaseModel):
+    """
+    Invoice collection schema
+    Collection name: "invoice"
+    """
+    customer_invoice_no: str = Field(..., description="Nomor Customer Invoice")
+    surat_jalan_no: str = Field(..., description="Nomor Surat Jalan")
+    quantity: int = Field(..., ge=0, description="Quantity")
+    price: float = Field(..., ge=0, description="Harga per unit")
+    tax: float = Field(..., ge=0, description="Pajak (11%) yang dihitung otomatis")
+    total: float = Field(..., ge=0, description="Total harga (qty * price + tax)")
