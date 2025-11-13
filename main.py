@@ -90,7 +90,7 @@ class InvoiceCreate(BaseModel):
     price: float
 
 class InvoiceUpdate(BaseModel):
-    invoice_no: Optional[str] = None
+    # Primary key (invoice_no) is not updatable
     customer: Optional[str] = None
     item_name: Optional[str] = None
     surat_jalan_no: Optional[str] = None
@@ -109,7 +109,11 @@ def compute_tax_and_total(quantity: int, price: float):
 async def create_invoice(payload: InvoiceCreate):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
+    
+    # Compute totals
     tax, total = compute_tax_and_total(payload.quantity, payload.price)
+
+    # Prepare document with custom primary key (_id = invoice_no)
     invoice = Invoice(
         invoice_no=payload.invoice_no,
         customer=payload.customer,
@@ -120,8 +124,18 @@ async def create_invoice(payload: InvoiceCreate):
         tax=tax,
         total=total,
     )
-    inserted_id = create_document("invoice", invoice)
-    doc = db["invoice"].find_one({"_id": ObjectId(inserted_id)})
+    data = invoice.model_dump()
+    data["_id"] = payload.invoice_no  # make invoice_no the primary key
+
+    # Insert and handle duplicate key as 409 Conflict
+    try:
+        result = db["invoice"].insert_one(data)
+    except Exception as e:
+        if "E11000" in str(e):
+            raise HTTPException(status_code=409, detail="Invoice number already exists")
+        raise
+
+    doc = db["invoice"].find_one({"_id": payload.invoice_no})
     return serialize_doc(doc)
 
 @app.get("/api/invoices")
@@ -131,20 +145,20 @@ async def list_invoices():
     docs = get_documents("invoice")
     return [serialize_doc(d) for d in docs]
 
-@app.get("/api/invoices/{invoice_id}")
-async def get_invoice(invoice_id: str):
+@app.get("/api/invoices/{invoice_no}")
+async def get_invoice(invoice_no: str):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
-    doc = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
+    doc = db["invoice"].find_one({"_id": invoice_no})
     if not doc:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return serialize_doc(doc)
 
-@app.put("/api/invoices/{invoice_id}")
-async def update_invoice(invoice_id: str, payload: InvoiceUpdate):
+@app.put("/api/invoices/{invoice_no}")
+async def update_invoice(invoice_no: str, payload: InvoiceUpdate):
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
-    existing = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
+    existing = db["invoice"].find_one({"_id": invoice_no})
     if not existing:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
@@ -158,9 +172,9 @@ async def update_invoice(invoice_id: str, payload: InvoiceUpdate):
 
     update_data["updated_at"] = __import__('datetime').datetime.utcnow()
 
-    result = db["invoice"].update_one({"_id": ObjectId(invoice_id)}, {"$set": update_data})
+    result = db["invoice"].update_one({"_id": invoice_no}, {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    doc = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
+    doc = db["invoice"].find_one({"_id": invoice_no})
     return serialize_doc(doc)
