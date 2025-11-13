@@ -45,7 +45,9 @@ class Invoice(BaseModel):
     Invoice collection schema
     Collection name: "invoice"
     """
-    customer_invoice_no: str = Field(..., description="Nomor Customer Invoice")
+    invoice_no: str = Field(..., description="Nomor Invoice")
+    customer: str = Field(..., description="Nama Customer")
+    item_name: str = Field(..., description="Nama Barang")
     surat_jalan_no: str = Field(..., description="Nomor Surat Jalan")
     quantity: int = Field(..., ge=0, description="Quantity")
     price: float = Field(..., ge=0, description="Harga per unit")

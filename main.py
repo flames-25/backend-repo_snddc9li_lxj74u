@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 from bson import ObjectId
 
 from database import db
@@ -82,13 +82,17 @@ def serialize_doc(doc: dict):
 
 # Request model for creating/updating invoice (without timestamps)
 class InvoiceCreate(BaseModel):
-    customer_invoice_no: str
+    invoice_no: str
+    customer: str
+    item_name: str
     surat_jalan_no: str
     quantity: int
     price: float
 
 class InvoiceUpdate(BaseModel):
-    customer_invoice_no: Optional[str] = None
+    invoice_no: Optional[str] = None
+    customer: Optional[str] = None
+    item_name: Optional[str] = None
     surat_jalan_no: Optional[str] = None
     quantity: Optional[int] = None
     price: Optional[float] = None
@@ -107,7 +111,9 @@ async def create_invoice(payload: InvoiceCreate):
         raise HTTPException(status_code=500, detail="Database not configured")
     tax, total = compute_tax_and_total(payload.quantity, payload.price)
     invoice = Invoice(
-        customer_invoice_no=payload.customer_invoice_no,
+        invoice_no=payload.invoice_no,
+        customer=payload.customer,
+        item_name=payload.item_name,
         surat_jalan_no=payload.surat_jalan_no,
         quantity=payload.quantity,
         price=payload.price,
@@ -158,4 +164,3 @@ async def update_invoice(invoice_id: str, payload: InvoiceUpdate):
 
     doc = db["invoice"].find_one({"_id": ObjectId(invoice_id)})
     return serialize_doc(doc)
-
